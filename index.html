@@ -9,7 +9,8 @@
     form { display: flex; flex-direction: column; gap: 10px; }
     button { padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
     button:disabled { background: #cccccc; cursor: not-allowed; }
-    #progresso { margin-top: 10px; }
+    #progresso { margin-top: 10px; white-space: pre-wrap; }
+    .error { color: red; }
   </style>
 </head>
 <body>
@@ -77,7 +78,8 @@
     // Verificar suporte do navegador
     function verificarSuporte() {
       if (typeof WebAssembly !== 'object') {
-        progresso.textContent = 'Erro: Navegador não suporta WebAssembly. Use um navegador moderno.';
+        progresso.textContent = 'Erro: Navegador não suporta WebAssembly. Use um navegador moderno (Chrome, Firefox, Edge).';
+        progresso.classList.add('error');
         gerarBtn.disabled = true;
         return false;
       }
@@ -86,28 +88,37 @@
 
     // Buscar vídeos no Pixabay
     async function buscarVideosPixabay(palavraChave, quantidade) {
-      const apiKey = '48429608-b91af5e838d3efacf96128eac'; // Substitua pela sua chave da API do Pixabay
+      const apiKey = '48429608-b91af5e838d3efacf96128eac';
       const url = `https://pixabay.com/api/videos/?key=${apiKey}&q=${encodeURIComponent(palavraChave)}&per_page=${quantidade}`;
+      progresso.textContent = `Buscando ${quantidade} vídeos para "${palavraChave}"...`;
       try {
         const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const data = await response.json();
+        if (!data.hits || data.hits.length === 0) throw new Error('Nenhum vídeo encontrado para a palavra-chave.');
         return data.hits.map(video => ({
           url: video.videos.medium.url,
           duration: video.duration
         }));
       } catch (error) {
-        progresso.textContent = 'Erro ao buscar vídeos: ' + error.message;
+        progresso.textContent = `Erro ao buscar vídeos: ${error.message}`;
+        progresso.classList.add('error');
         return [];
       }
     }
 
-    // Baixar vídeo
-    async function baixarVideo(url) {
+    // Baixar vídeo com proxy CORS
+    async function baixarVideo(url, index) {
+      progresso.textContent = `Baixando vídeo ${index + 1}...`;
       try {
-        const response = await fetch(url);
+        // Usar proxy CORS para evitar bloqueios
+        const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         return new Uint8Array(await response.arrayBuffer());
       } catch (error) {
-        progresso.textContent = 'Erro ao baixar vídeo: ' + error.message;
+        progresso.textContent = `Erro ao baixar vídeo ${index + 1}: ${error.message}`;
+        progresso.classList.add('error');
         return null;
       }
     }
@@ -125,24 +136,24 @@
 
       progresso.textContent = 'Processando vídeos...';
       for (let i = 0; i < videos.length; i++) {
-        const videoData = await baixarVideo(videos[i].url);
-        if (videoData) {
-          ffmpeg.FS('writeFile', `input${i}.mp4`, videoData);
-          // Cortar vídeo para a duração desejada
-          await ffmpeg.run('-i', `input${i}.mp4`, '-t', duracaoPorClipe.toString(), '-c', 'copy', `clip${i}.mp4`);
-        }
+        const videoData = await baixarVideo(videos[i].url, i);
+        if (!videoData) throw new Error(`Falha ao baixar vídeo ${i + 1}`);
+        ffmpeg.FS('writeFile', `input${i}.mp4`, videoData);
+        // Cortar vídeo para a duração desejada
+        await ffmpeg.run('-i', `input${i}.mp4`, '-t', duracaoPorClipe.toString(), '-c:v', 'libx264', '-c:a', 'aac', `clip${i}.mp4`);
       }
 
       // Concatenar com transições
       let filterComplex = '';
       for (let i = 0; i < videos.length - 1; i++) {
-        filterComplex += `[${i}:v][${i + 1}:v]xfade=transition=fade:duration=${duracaoTransicao}:offset=${duracaoPorClipe * i}[v${i + 1}];`;
+        filterComplex += `[${i}:v][${i + 1}:v]xfade=transition=fade:duration=${duracaoTransicao}:offset=${(duracaoPorClipe - duracaoTransicao) * i}[v${i + 1}];`;
       }
       filterComplex += `[v${videos.length - 1}][${videos.length - 1}:v]concat=n=${videos.length}:v=1:a=0[outv]`;
 
       const bitrate = qualidade === 'HD' ? '5000k' : qualidade === 'SD' ? '2000k' : '1000k';
       const resolucao = qualidade === 'HD' ? '1920x1080' : qualidade === 'SD' ? '1280x720' : '854x480';
       const inputs = videos.flatMap((_, i) => ['-i', `clip${i}.mp4`]);
+      progresso.textContent = 'Concatenando vídeos com transições...';
       await ffmpeg.run(
         ...inputs,
         '-filter_complex', filterComplex,
@@ -151,6 +162,7 @@
         '-b:v', bitrate,
         '-r', '30',
         '-s', resolucao,
+        '-c:a', 'aac',
         '-y', 'output.mp4'
       );
 
@@ -162,10 +174,10 @@
     // Limpar cache
     function limparCache(numVideos) {
       for (let i = 0; i < numVideos; i++) {
-        ffmpeg.FS('unlink', `input${i}.mp4`);
-        ffmpeg.FS('unlink', `clip${i}.mp4`);
+        try { ffmpeg.FS('unlink', `input${i}.mp4`); } catch (e) {}
+        try { ffmpeg.FS('unlink', `clip${i}.mp4`); } catch (e) {}
       }
-      ffmpeg.FS('unlink', 'output.mp4');
+      try { ffmpeg.FS('unlink', 'output.mp4'); } catch (e) {}
     }
 
     // Baixar vídeo final
@@ -177,6 +189,7 @@
       a.download = 'video_final.mp4';
       a.click();
       URL.revokeObjectURL(url);
+      progresso.textContent = 'Vídeo gerado e baixado com sucesso!';
     }
 
     // Manipular formulário
@@ -185,7 +198,8 @@
       if (!verificarSuporte()) return;
 
       gerarBtn.disabled = true;
-      progresso.textContent = "Iniciando...";
+      progresso.classList.remove('error');
+      progresso.textContent = 'Iniciando...';
 
       const palavraChave = document.getElementById('palavraChave').value;
       const duracaoTotal = parseInt(document.getElementById('duracaoTotal').value);
@@ -194,27 +208,32 @@
       const duracaoTransicao = parseFloat(document.getElementById('duracaoTransicao').value);
       const videosPorPalavra = parseInt(document.getElementById('videosPorPalavra').value);
 
+      if (duracaoTransicao >= duracaoPorClipe) {
+        progresso.textContent = 'Erro: A duração da transição deve ser menor que a duração por clipe.';
+        progresso.classList.add('error');
+        gerarBtn.disabled = false;
+        return;
+      }
+
       salvarConfiguracoes();
       const numClipes = calcularNumeroClipes(duracaoTotal, duracaoPorClipe, duracaoTransicao);
-      progresso.textContent = `Buscando ${numClipes} vídeos...`;
-
-      const videos = await buscarVideosPixabay(palavraChave, Math.min(numClipes, videosPorPalavra));
+      const videosParaBuscar = Math.min(numClipes, videosPorPalavra);
+      const videos = await buscarVideosPixabay(palavraChave, videosParaBuscar);
       if (videos.length === 0) {
-        progresso.textContent = 'Nenhum vídeo encontrado.';
         gerarBtn.disabled = false;
         return;
       }
 
       ffmpeg.setProgress(({ ratio }) => {
-        progresso.textContent = `Progresso: ${(ratio * 100).toFixed(2)}%`;
+        progresso.textContent = `Progresso do FFmpeg: ${(ratio * 100).toFixed(2)}%`;
       });
 
       try {
         const output = await processarVideos(videos, duracaoPorClipe, duracaoTransicao, qualidade);
-        progresso.textContent = 'Vídeo gerado! Iniciando download...';
         baixarVideoFinal(output);
       } catch (error) {
-        progresso.textContent = 'Erro ao processar vídeo: ' + error.message;
+        progresso.textContent = `Erro ao processar vídeo: ${error.message}\nVerifique o console do navegador (F12) para mais detalhes.`;
+        progresso.classList.add('error');
       }
 
       gerarBtn.disabled = false;
