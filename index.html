@@ -1,117 +1,14 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerador de Vídeos Automático - Pixabay</title>
-    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-content">
-            <div class="spinner"></div>
-            <h3>Carregando FFmpeg...</h3>
-            <p>Aguarde, estamos preparando o sistema de edição de vídeo.</p>
-        </div>
-    </div>
-
-    <!-- Main Container -->
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <div class="logo">
-                    <span class="logo-icon">🎬</span>
-                    <h1>Gerador de Vídeos Automático</h1>
-                </div>
-                <p class="subtitle">Crie vídeos incríveis usando conteúdo gratuito do Pixabay</p>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Messages -->
-            <div class="message error-message" id="errorMessage"></div>
-            <div class="message success-message" id="successMessage"></div>
-
-            <!-- Configuration Section -->
-            <section class="config-section">
-                <div class="section-header">
-                    <h2>⚙️ Configurações do Vídeo</h2>
-                    <p>Configure os parâmetros para gerar seu vídeo personalizado</p>
-                </div>
-
-                <div class="form-container">
-                    <div class="form-group">
-                        <label for="apiKey">
-                            <span class="label-icon">🔑</span>
-                            Chave da API do Pixabay
-                        </label>
-                        <input type="password" id="apiKey" placeholder="48429608-b91af5e838d3efacf96128eac">
-                        <small class="help-text">
-                            <a href="https://pixabay.com/api/docs/" target="_blank">Obtenha sua chave aqui</a>
-                        </small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="keywords">
-                            <span class="label-icon">🔍</span>
-                            Palavras-chave
-                        </label>
-                        <textarea id="keywords" placeholder="nature, ocean, mountain, sunset" rows="3"></textarea>
-                        <small class="help-text">Separe as palavras-chave com vírgulas</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="totalDuration">
-                            <span class="label-icon">⏱️</span>
-                            Duração Total (minutos)
-                        </label>
-                        <input type="number" id="totalDuration" value="1" min="1" max="50">
-                        <small class="help-text">Máximo: 50 minutos</small>
-                    </div>
-
-                    <button class="generate-btn" id="generateBtn">
-                        <span class="btn-icon">🚀</span>
-                        Gerar Vídeo Automático
-                    </button>
-                </div>
-            </section>
-
-            <!-- Progress Section -->
-            <section class="progress-section" id="progressSection">
-                <h3>🔄 Gerando seu vídeo...</h3>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
-                </div>
-                <div class="status-text" id="statusText">Iniciando...</div>
-            </section>
-
-            <!-- Video Preview -->
-            <section class="video-preview" id="videoPreview">
-                <h3>📹 Vídeos Encontrados</h3>
-                <div class="preview-grid" id="previewGrid"></div>
-            </section>
-
-            <!-- Download Section -->
-            <section class="download-section" id="downloadSection">
-                <div class="download-header">
-                    <h3>✅ Vídeo Pronto!</h3>
-                    <p>Seu vídeo foi gerado com sucesso</p>
-                </div>
-                <div class="video-container">
-                    <video controls id="finalVideo"></video>
-                </div>
-                <button class="download-btn" onclick="downloadVideo()">
-                    <span class="btn-icon">📥</span>
-                    Baixar Vídeo
-                </button>
-            </section>
-        </main>
-    </div>
-
-    <script src="script.js"></script>
-</body>
-</html>
+<!-- HTML -->
+<div class="app">
+  <header>
+    <h1>🎬 Gerador de Vídeos</h1>
+    <p>Busque e baixe vídeos do Pixabay facilmente</p>
+  </header>
+  
+  <div class="form">
+    <input type="text" id="keywords" placeholder="Ex: nature, ocean, mountain">
+    <button onclick="searchVideos()">🔍 Buscar Vídeos</button>
+  </div>
+  
+  <div id="results"></div>
+</div>
