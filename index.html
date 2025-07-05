@@ -1,1 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Gerador de Vídeo com Pixabay</title>
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: auto; }
+    form { display: flex; flex-direction: column; gap: 10px; }
+    button { padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
+    button:disabled { background: #cccccc; cursor: not-allowed; }
+    #progresso { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Gerador de Vídeo com Pixabay</h1>
+  <form id="videoForm">
+    <label>Palavra-chave:</label>
+    <input type="text" id="palavraChave" placeholder="Ex: natureza" required>
+    <label>Duração total (segundos):</label>
+    <input type="number" id="duracaoTotal" min="10" value="60" required>
+    <label>Duração por clipe (segundos):</label>
+    <select id="duracaoPorClipe">
+      <option value="5">5 segundos</option>
+      <option value="10" selected>10 segundos</option>
+      <option value="15">15 segundos</option>
+      <option value="20">20 segundos</option>
+      <option value="30">30 segundos</option>
+    </select>
+    <label>Qualidade:</label>
+    <select id="qualidade">
+      <option value="HD">HD (1920x1080)</option>
+      <option value="SD" selected>SD (1280x720)</option>
+      <option value="Baixa">Baixa (854x480)</option>
+    </select>
+    <label>Duração da transição (segundos):</label>
+    <input type="number" id="duracaoTransicao" min="0.5" max="2" step="0.1" value="1">
+    <label>Vídeos por palavra-chave:</label>
+    <input type="number" id="videosPorPalavra" min="1" max="5" value="3">
+    <button type="submit" id="gerarBtn">Gerar Vídeo</button>
+  </form>
+  <div id="progresso">Aguardando...</div>
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+    const form = document.getElementById('videoForm');
+    const progresso = document.getElementById('progresso');
+    const gerarBtn = document.getElementById('gerarBtn');
 
+    // Carregar configurações salvas
+    function carregarConfiguracoes() {
+      const config = localStorage.getItem('videoConfig');
+      if (config) {
+        const { palavraChave, duracaoTotal, duracaoPorClipe, qualidade, duracaoTransicao, videosPorPalavra } = JSON.parse(config);
+        document.getElementById('palavraChave').value = palavraChave || '';
+        document.getElementById('duracaoTotal').value = duracaoTotal || 60;
+        document.getElementById('duracaoPorClipe').value = duracaoPorClipe || 10;
+        document.getElementById('qualidade').value = qualidade || 'SD';
+        document.getElementById('duracaoTransicao').value = duracaoTransicao || 1;
+        document.getElementById('videosPorPalavra').value = videosPorPalavra || 3;
+      }
+    }
+
+    // Salvar configurações
+    function salvarConfiguracoes() {
+      const config = {
+        palavraChave: document.getElementById('palavraChave').value,
+        duracaoTotal: parseInt(document.getElementById('duracaoTotal').value),
+        duracaoPorClipe: parseInt(document.getElementById('duracaoPorClipe').value),
+        qualidade: document.getElementById('qualidade').value,
+        duracaoTransicao: parseFloat(document.getElementById('duracaoTransicao').value),
+        videosPorPalavra: parseInt(document.getElementById('videosPorPalavra').value)
+      };
+      localStorage.setItem('videoConfig', JSON.stringify(config));
+    }
+
+    // Verificar suporte do navegador
+    function verificarSuporte() {
+      if (typeof WebAssembly !== 'object') {
+        progresso.textContent = 'Erro: Navegador não suporta WebAssembly. Use um navegador moderno.';
+        gerarBtn.disabled = true;
+        return false;
+      }
+      return true;
+    }
+
+    // Buscar vídeos no Pixabay
+    async function buscarVideosPixabay(palavraChave, quantidade) {
+      const apiKey = 'SUA_CHAVE_API'; // Substitua pela sua chave da API do Pixabay
+      const url = `https://pixabay.com/api/videos/?key=${apiKey}&q=${encodeURIComponent(palavraChave)}&per_page=${quantidade}`;
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.hits.map(video => ({
+          url: video.videos.medium.url,
+          duration: video.duration
+        }));
+      } catch (error) {
+        progresso.textContent = 'Erro ao buscar vídeos: ' + error.message;
+        return [];
+      }
+    }
+
+    // Baixar vídeo
+    async function baixarVideo(url) {
+      try {
+        const response = await fetch(url);
+        return new Uint8Array(await response.arrayBuffer());
+      } catch (error) {
+        progresso.textContent = 'Erro ao baixar vídeo: ' + error.message;
+        return null;
+      }
+    }
+
+    // Calcular número de clipes
+    function calcularNumeroClipes(duracaoTotal, duracaoPorClipe, duracaoTransicao) {
+      const duracaoEfetivaPorClipe = duracaoPorClipe - duracaoTransicao;
+      return Math.ceil(duracaoTotal / duracaoEfetivaPorClipe);
+    }
+
+    // Processar vídeos com FFmpeg
+    async function processarVideos(videos, duracaoPorClipe, duracaoTransicao, qualidade) {
+      progresso.textContent = 'Carregando FFmpeg...';
+      if (!ffmpeg.isLoaded()) await ffmpeg.load();
+
+      progresso.textContent = 'Processando vídeos...';
+      for (let i = 0; i < videos.length; i++) {
+        const videoData = await baixarVideo(videos[i].url);
+        if (videoData) {
+          ffmpeg.FS('writeFile', `input${i}.mp4`, videoData);
+          // Cortar vídeo para a duração desejada
+          await ffmpeg.run('-i', `input${i}.mp4`, '-t', duracaoPorClipe.toString(), '-c', 'copy', `clip${i}.mp4`);
+        }
+      }
+
+      // Concatenar com transições
+      let filterComplex = '';
+      for (let i = 0; i < videos.length - 1; i++) {
+        filterComplex += `[${i}:v][${i + 1}:v]xfade=transition=fade:duration=${duracaoTransicao}:offset=${duracaoPorClipe * i}[v${i + 1}];`;
+      }
+      filterComplex += `[v${videos.length - 1}][${videos.length - 1}:v]concat=n=${videos.length}:v=1:a=0[outv]`;
+
+      const bitrate = qualidade === 'HD' ? '5000k' : qualidade === 'SD' ? '2000k' : '1000k';
+      const resolucao = qualidade === 'HD' ? '1920x1080' : qualidade === 'SD' ? '1280x720' : '854x480';
+      const inputs = videos.flatMap((_, i) => ['-i', `clip${i}.mp4`]);
+      await ffmpeg.run(
+        ...inputs,
+        '-filter_complex', filterComplex,
+        '-map', '[outv]',
+        '-c:v', 'libx264',
+        '-b:v', bitrate,
+        '-r', '30',
+        '-s', resolucao,
+        '-y', 'output.mp4'
+      );
+
+      const output = ffmpeg.FS('readFile', 'output.mp4');
+      limparCache(videos.length);
+      return output;
+    }
+
+    // Limpar cache
+    function limparCache(numVideos) {
+      for (let i = 0; i < numVideos; i++) {
+        ffmpeg.FS('unlink', `input${i}.mp4`);
+        ffmpeg.FS('unlink', `clip${i}.mp4`);
+      }
+      ffmpeg.FS('unlink', 'output.mp4');
+    }
+
+    // Baixar vídeo final
+    function baixarVideoFinal(output) {
+      const blob = new Blob([output.buffer], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'video_final.mp4';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Manipular formulário
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!verificarSuporte()) return;
+
+      gerarBtn.disabled = true;
+      progresso.textContent = "Iniciando...";
+
+      const palavraChave = document.getElementById('palavraChave').value;
+      const duracaoTotal = parseInt(document.getElementById('duracaoTotal').value);
+      const duracaoPorClipe = parseInt(document.getElementById('duracaoPorClipe').value);
+      const qualidade = document.getElementById('qualidade').value;
+      const duracaoTransicao = parseFloat(document.getElementById('duracaoTransicao').value);
+      const videosPorPalavra = parseInt(document.getElementById('videosPorPalavra').value);
+
+      salvarConfiguracoes();
+      const numClipes = calcularNumeroClipes(duracaoTotal, duracaoPorClipe, duracaoTransicao);
+      progresso.textContent = `Buscando ${numClipes} vídeos...`;
+
+      const videos = await buscarVideosPixabay(palavraChave, Math.min(numClipes, videosPorPalavra));
+      if (videos.length === 0) {
+        progresso.textContent = 'Nenhum vídeo encontrado.';
+        gerarBtn.disabled = false;
+        return;
+      }
+
+      ffmpeg.setProgress(({ ratio }) => {
+        progresso.textContent = `Progresso: ${(ratio * 100).toFixed(2)}%`;
+      });
+
+      try {
+        const output = await processarVideos(videos, duracaoPorClipe, duracaoTransicao, qualidade);
+        progresso.textContent = 'Vídeo gerado! Iniciando download...';
+        baixarVideoFinal(output);
+      } catch (error) {
+        progresso.textContent = 'Erro ao processar vídeo: ' + error.message;
+      }
+
+      gerarBtn.disabled = false;
+    });
+
+    // Carregar configurações ao iniciar
+    carregarConfiguracoes();
+  </script>
+</body>
+</html>
