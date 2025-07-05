@@ -86,7 +86,7 @@
 
     // Buscar vídeos no Pixabay
     async function buscarVideosPixabay(palavraChave, quantidade) {
-      const apiKey = 'SUA_CHAVE_API'; // Substitua pela sua chave da API do Pixabay
+      const apiKey = '48429608-b91af5e838d3efacf96128eac'; // Substitua pela sua chave da API do Pixabay
       const url = `https://pixabay.com/api/videos/?key=${apiKey}&q=${encodeURIComponent(palavraChave)}&per_page=${quantidade}`;
       try {
         const response = await fetch(url);
