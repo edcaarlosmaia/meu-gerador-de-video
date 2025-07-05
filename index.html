@@ -19,7 +19,7 @@
     <label>Palavra-chave:</label>
     <input type="text" id="palavraChave" placeholder="Ex: natureza" required>
     <label>Duração total (segundos):</label>
-    <input type="number" id="duracaoTotal" min="10" value="60" required>
+    <input type="number" id="duracaoTotal" min="10" value="30" required>
     <label>Duração por clipe (segundos):</label>
     <select id="duracaoPorClipe">
       <option value="5">5 segundos</option>
@@ -37,16 +37,33 @@
     <label>Duração da transição (segundos):</label>
     <input type="number" id="duracaoTransicao" min="0.5" max="2" step="0.1" value="1">
     <label>Vídeos por palavra-chave:</label>
-    <input type="number" id="videosPorPalavra" min="1" max="5" value="3">
+    <input type="number" id="videosPorPalavra" min="1" max="3" value="2">
     <button type="submit" id="gerarBtn">Gerar Vídeo</button>
   </form>
   <div id="progresso">Aguardando...</div>
   <script>
     const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpeg = createFFmpeg({ log: true });
+    const ffmpeg = createFFmpeg({ log: true, corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js' });
     const form = document.getElementById('videoForm');
     const progresso = document.getElementById('progresso');
     const gerarBtn = document.getElementById('gerarBtn');
+
+    // Verificar suporte do navegador
+    function verificarSuporte() {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        progresso.textContent = 'Erro: SharedArrayBuffer não está disponível. Use um navegador moderno (Chrome, Firefox, Edge) e acesse via localhost ou um servidor com cabeçalhos COOP/COEP configurados.\nInstruções: Execute "python -m http.server" no diretório do projeto e acesse http://localhost:8000.';
+        progresso.classList.add('error');
+        gerarBtn.disabled = true;
+        return false;
+      }
+      if (typeof WebAssembly !== 'object') {
+        progresso.textContent = 'Erro: Navegador não suporta WebAssembly. Use um navegador moderno.';
+        progresso.classList.add('error');
+        gerarBtn.disabled = true;
+        return false;
+      }
+      return true;
+    }
 
     // Carregar configurações salvas
     function carregarConfiguracoes() {
@@ -54,11 +71,11 @@
       if (config) {
         const { palavraChave, duracaoTotal, duracaoPorClipe, qualidade, duracaoTransicao, videosPorPalavra } = JSON.parse(config);
         document.getElementById('palavraChave').value = palavraChave || '';
-        document.getElementById('duracaoTotal').value = duracaoTotal || 60;
+        document.getElementById('duracaoTotal').value = duracaoTotal || 30;
         document.getElementById('duracaoPorClipe').value = duracaoPorClipe || 10;
         document.getElementById('qualidade').value = qualidade || 'SD';
         document.getElementById('duracaoTransicao').value = duracaoTransicao || 1;
-        document.getElementById('videosPorPalavra').value = videosPorPalavra || 3;
+        document.getElementById('videosPorPalavra').value = videosPorPalavra || 2;
       }
     }
 
@@ -73,17 +90,6 @@
         videosPorPalavra: parseInt(document.getElementById('videosPorPalavra').value)
       };
       localStorage.setItem('videoConfig', JSON.stringify(config));
-    }
-
-    // Verificar suporte do navegador
-    function verificarSuporte() {
-      if (typeof WebAssembly !== 'object') {
-        progresso.textContent = 'Erro: Navegador não suporta WebAssembly. Use um navegador moderno (Chrome, Firefox, Edge).';
-        progresso.classList.add('error');
-        gerarBtn.disabled = true;
-        return false;
-      }
-      return true;
     }
 
     // Buscar vídeos no Pixabay
@@ -111,8 +117,7 @@
     async function baixarVideo(url, index) {
       progresso.textContent = `Baixando vídeo ${index + 1}...`;
       try {
-        // Usar proxy CORS para evitar bloqueios
-        const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`; // Proxy alternativo
         const response = await fetch(proxyUrl);
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         return new Uint8Array(await response.arrayBuffer());
@@ -139,7 +144,7 @@
         const videoData = await baixarVideo(videos[i].url, i);
         if (!videoData) throw new Error(`Falha ao baixar vídeo ${i + 1}`);
         ffmpeg.FS('writeFile', `input${i}.mp4`, videoData);
-        // Cortar vídeo para a duração desejada
+        progresso.textContent = `Cortando vídeo ${i + 1} para ${duracaoPorClipe} segundos...`;
         await ffmpeg.run('-i', `input${i}.mp4`, '-t', duracaoPorClipe.toString(), '-c:v', 'libx264', '-c:a', 'aac', `clip${i}.mp4`);
       }
 
